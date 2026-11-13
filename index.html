@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="A ball bounces across a grid of squares and each square it crosses plays a short tone; move the mouse or a finger over the grid to play it yourself.">
+    <title>Squares</title>
+    <link rel="icon" href="favicon.ico" sizes="32x32">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <script src="matter.min.js"></script>
+    <style>
+        /* ---------- pteroscillator shared standard ---------- */
+        :root {
+            --bg: #000;
+            --surface: #0a0a0a;
+            --surface-2: #141414;
+            --line: #1a1a1a;
+            --border: #4d4d4d;
+            --border-hover: #999;
+            --text-dim: #808080;
+            --text-mid: #ccc;
+            --text: #fff;
+            --hover-bg: #0d0d0d;
+            --active-bg: #1a1a1a;
+            --danger-bg: #1a0000;
+            --danger-border: #800000;
+            --danger-text: #ff6666;
+            --danger-hover-bg: #330000;
+            --danger-hover-border: #cc0000;
+            --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            --edge: 40px;
+            --header-h: 116px;
+            --panel-top: 84px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+        }
+
+        button, input, select, a {
+            font-family: inherit;
+        }
+
+        button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+            outline: 1px solid var(--text) !important;
+            outline-offset: 2px;
+        }
+
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            padding: calc(var(--edge) + env(safe-area-inset-top, 0px)) calc(var(--edge) + env(safe-area-inset-right, 0px)) 0 calc(var(--edge) + env(safe-area-inset-left, 0px));
+            pointer-events: none;
+        }
+
+        .header > * {
+            pointer-events: auto;
+        }
+
+        .header.solid {
+            background: var(--bg);
+            padding-bottom: 16px;
+        }
+
+        .page-title {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .menu-btn {
+            display: block;
+            background: none;
+            border: none;
+            padding: 8px;
+            margin: -8px;
+            color: var(--border-hover);
+            cursor: pointer;
+            line-height: 0;
+            transition: color 0.3s;
+        }
+
+        .menu-btn:hover,
+        .menu-btn[aria-expanded="true"] {
+            color: var(--text);
+            background: none;
+        }
+
+        .menu-btn svg {
+            display: block;
+        }
+
+        .panel {
+            position: fixed;
+            z-index: 101; /* above the header bar */
+            top: calc(var(--panel-top) + env(safe-area-inset-top, 0px));
+            right: calc(var(--edge) + env(safe-area-inset-right, 0px));
+            width: 220px;
+            max-height: calc(100vh - var(--panel-top) - var(--edge));
+            max-height: calc(100dvh - var(--panel-top) - var(--edge) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid var(--line);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .panel[hidden] {
+            display: none;
+        }
+
+        .panel::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .panel::-webkit-scrollbar-thumb {
+            background: var(--border);
+        }
+
+        .qr {
+            display: block;
+            width: 160px;
+            height: 160px;
+            margin: 0 auto;
+            flex-shrink: 0;
+        }
+
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-top: 16px;
+            border-top: 1px solid var(--line);
+        }
+
+        .btn,
+        .btn-start,
+        .btn-small {
+            display: inline-block;
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text);
+            text-transform: uppercase;
+            text-decoration: none;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn {
+            padding: 8px 20px;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+
+        .btn-small {
+            padding: 4px 8px;
+            font-size: 11px;
+            letter-spacing: 1px;
+        }
+
+        .btn-start {
+            background: var(--bg); /* stays readable over a canvas */
+            width: 104px;
+            height: 36px;
+            padding: 0;
+            font-size: 14px;
+            letter-spacing: 2px;
+        }
+
+        .btn:hover,
+        .btn-start:hover,
+        .btn-small:hover {
+            border-color: var(--border-hover);
+            background: var(--hover-bg);
+        }
+
+        .btn.active,
+        .btn-start.active,
+        .btn-small.active {
+            border-color: var(--text);
+            background: var(--active-bg);
+        }
+
+        .btn.danger {
+            background: var(--danger-bg);
+            border-color: var(--danger-border);
+            color: var(--danger-text);
+        }
+
+        .btn.danger:hover {
+            background: var(--danger-hover-bg);
+            border-color: var(--danger-hover-border);
+        }
+
+        .panel .btn {
+            width: 100%;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 28px; /* hit area */
+            margin: 0;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            height: 1px;
+            background: var(--border);
+        }
+
+        input[type="range"]::-moz-range-track {
+            height: 1px;
+            background: var(--border);
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 17px;
+            height: 17px;
+            margin-top: -8px; /* (1 - 17) / 2 */
+            border: none;
+            border-radius: 50%;
+            background: var(--text);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 17px;
+            height: 17px;
+            border: none;
+            border-radius: 50%;
+            background: var(--text);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .value {
+            font-size: 11px;
+            color: var(--text-dim);
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+
+        .control-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+        }
+
+        @media (max-width: 768px) {
+            :root {
+                --edge: 16px;
+                --header-h: 56px;
+                --panel-top: 64px;
+            }
+
+            .header {
+                padding-top: calc(10px + env(safe-area-inset-top, 0px));
+            }
+
+            .header.solid {
+                padding-bottom: 10px;
+            }
+
+            .panel {
+                left: calc(var(--edge) + env(safe-area-inset-left, 0px));
+                width: auto;
+            }
+
+            input[type="range"] {
+                height: 44px;
+            }
+
+            input[type="range"]::-webkit-slider-thumb {
+                width: 25px;
+                height: 25px;
+                margin-top: -12px;
+            }
+
+            input[type="range"]::-moz-range-thumb {
+                width: 25px;
+                height: 25px;
+            }
+
+            .btn {
+                min-height: 40px;
+            }
+
+            .btn-small {
+                min-width: 36px;
+                min-height: 36px;
+            }
+        }
+        /* ---------- end of shared standard ---------- */
+
+        body {
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        #board-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            overflow: hidden;
+        }
+
+        #squares-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .square {
+            width: 12px;
+            height: 12px;
+            background: var(--bg);
+            position: absolute;
+            border: 0.5px solid var(--line);
+            cursor: pointer;
+        }
+
+        .square.active {
+            background: #a4a4a4;
+        }
+
+        .control {
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <div id="board-container">
+        <div id="squares-grid"></div>
+    </div>
+
+    <header class="header">
+        <div class="page-title">Squares</div>
+        <div class="header-actions">
+            <button class="btn-start" id="startStopBtn">Start</button>
+            <button class="menu-btn" id="menuBtn" aria-label="Menu" aria-expanded="false" aria-controls="panel"><svg width="28" height="28" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="20" fill="currentColor"/><rect x="11" y="12.5" width="18" height="3" fill="#000"/><rect x="11" y="18.5" width="18" height="3" fill="#000"/><rect x="11" y="24.5" width="18" height="3" fill="#000"/></svg></button>
+        </div>
+    </header>
+
+    <div class="panel" id="panel" hidden>
+        <img src="pteroscillator-QRcode.svg" class="qr" width="160" height="160" alt="QR code to pteroscillator.github.io">
+
+        <div class="control">
+            <div class="control-head"><span class="label">Speed</span><span class="value" id="speedValue">5</span></div>
+            <input type="range" id="speedSlider" min="1" max="25" value="5" step="1">
+        </div>
+
+        <div class="panel-section">
+            <button class="btn" id="reverbToggleBtn">Reverb: Off</button>
+
+            <div class="control">
+                <div class="control-head"><span class="label">Mix</span><span class="value" id="reverbMixValue">35%</span></div>
+                <input type="range" id="reverbMix" min="0" max="100" value="35" step="1">
+            </div>
+
+            <div class="control">
+                <div class="control-head"><span class="label">Decay</span><span class="value" id="reverbDecayValue">6.1s</span></div>
+                <input type="range" id="reverbDecay" min="0.1" max="10" value="6.1" step="0.1">
+            </div>
+
+            <div class="control">
+                <div class="control-head"><span class="label">Room</span><span class="value" id="reverbSizeValue">10</span></div>
+                <input type="range" id="reverbSize" min="1" max="10" value="10" step="1">
+            </div>
+        </div>
+
+        <div class="panel-section">
+            <button class="btn danger" id="resetBtn">Reset</button>
+            <a class="btn exit-link" href="https://pteroscillator.github.io/">Exit</a>
+        </div>
+    </div>
+
+    <script>
+        // Audio context: created inside the first user gesture, never on page load
+        let audioCtx = null;
+
+        function ensureAudio() {
+            if (!audioCtx) {
+                // iOS: play through the silent switch (Safari 16.4+)
+                try {
+                    if (navigator.audioSession) navigator.audioSession.type = 'playback';
+                } catch (e) {}
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        // Any first click, tap or key unlocks the audio (capture: runs before the grid handlers)
+        ['pointerdown', 'touchstart', 'keydown'].forEach(function(type) {
+            document.addEventListener(type, ensureAudio, { capture: true, passive: true });
+        });
+
+        // Control values (hardcoded frequency range)
+        const minFreq = 50;
+        const maxFreq = 10000;
+        let greyLevel = 0;
+        let whiteLevel = 164;
+        let ballSpeed = 5;
+        let isMuted = true;
+        let isRunning = false;
+        let isBallActive = false;
+        let speedIncrement = 2; // Speed increase per spacebar press
+
+        // Reverb parameters
+        let reverbEnabled = false;
+        let reverbMix = 0.35; // 0-1 (35% wet)
+        let reverbDecay = 6.1; // seconds
+        let reverbSize = 10; // 1-10
+        let reverbDamping = 0; // 0-1 (not used yet)
+
+        // Squares grid
+        const squareSize = 12;
+        let cols = 0;
+        let rows = 0;
+        let squares = [];
+
+        // Matter.js setup
+        const { Engine, Render, Runner, Bodies, World, Body } = Matter;
+
+        const engine = Engine.create({
+            enableSleeping: false
+        });
+        const world = engine.world;
+        world.gravity.y = 0; // No gravity
+
+        const container = document.getElementById('board-container');
+
+        // Calculate canvas size
+        function updateCanvasSize() {
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            cols = Math.floor(width / squareSize);
+            rows = Math.floor(height / squareSize);
+
+            return { width, height };
+        }
+
+        let { width: canvasWidth, height: canvasHeight } = updateCanvasSize();
+
+        // Create walls (thick enough to prevent tunneling)
+        const wallThickness = 50;
+        const wallOptions = {
+            isStatic: true,
+            restitution: 1,
+            friction: 0,
+            frictionStatic: 0,
+            render: { fillStyle: 'transparent' }
+        };
+
+        // The four walls follow the window size (rebuilt on resize)
+        function createWalls(width, height) {
+            return [
+                Bodies.rectangle(width / 2, -wallThickness / 2, width + wallThickness * 2, wallThickness, wallOptions),
+                Bodies.rectangle(width / 2, height + wallThickness / 2, width + wallThickness * 2, wallThickness, wallOptions),
+                Bodies.rectangle(-wallThickness / 2, height / 2, wallThickness, height + wallThickness * 2, wallOptions),
+                Bodies.rectangle(width + wallThickness / 2, height / 2, wallThickness, height + wallThickness * 2, wallOptions)
+            ];
+        }
+
+        let walls = createWalls(canvasWidth, canvasHeight);
+        World.add(world, walls);
+
+        // Create ball
+        const radius = 6;
+        const ball = Bodies.circle(canvasWidth / 2, canvasHeight / 2, radius, {
+            restitution: 1,
+            friction: 0,
+            frictionAir: 0,
+            frictionStatic: 0,
+            density: 0.001,
+            inertia: Infinity,
+            slop: 0,
+            render: {
+                fillStyle: '#a4a4a4'
+            }
+        });
+
+        // Set initial velocity
+        const angle = Math.random() * Math.PI * 2;
+        Body.setVelocity(ball, {
+            x: Math.cos(angle) * ballSpeed,
+            y: Math.sin(angle) * ballSpeed
+        });
+
+        World.add(world, ball);
+
+        // Shared function to calculate frequency for a square
+        function calculateFrequency(row) {
+            const rowRatio = 1 - (row / rows);
+            const rowMaxFreq = minFreq + (rowRatio * (maxFreq - minFreq));
+            const absoluteMin = 50;
+            return absoluteMin + Math.random() * (rowMaxFreq - absoluteMin);
+        }
+
+        // Shared function to activate a square
+        function activateSquareByElement(element, row, col) {
+            element.classList.add('active');
+            // No sound before the first click, tap or key (browsers block it)
+            if (!audioCtx || audioCtx.state !== 'running') return;
+
+            const pan = (col / cols) * 2 - 1;
+            const freq = calculateFrequency(row);
+            playSoundDirect(pan, freq);
+        }
+
+        // Create squares grid
+        function createSquaresGrid() {
+            const grid = document.getElementById('squares-grid');
+            grid.innerHTML = '';
+            squares = [];
+
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const square = document.createElement('div');
+                    square.className = 'square';
+                    square.style.left = (col * squareSize) + 'px';
+                    square.style.top = (row * squareSize) + 'px';
+
+                    // Store row/col as data attributes for event delegation
+                    square.dataset.row = row;
+                    square.dataset.col = col;
+
+                    grid.appendChild(square);
+
+                    squares.push({
+                        element: square,
+                        row: row,
+                        col: col,
+                        x: col * squareSize,
+                        y: row * squareSize
+                    });
+                }
+            }
+        }
+
+        createSquaresGrid();
+
+        // Create reverb effect (algorithmic delay-based reverb)
+        function createReverb() {
+            // Create delay nodes for reverb taps
+            const numTaps = 6;
+            const delays = [];
+            const gains = [];
+
+            // Mix nodes
+            const dryGain = audioCtx.createGain();
+            const wetGain = audioCtx.createGain();
+            const reverbOutput = audioCtx.createGain();
+
+            // Create delay taps with varying times based on room size
+            for (let i = 0; i < numTaps; i++) {
+                const delay = audioCtx.createDelay(10);
+                const gain = audioCtx.createGain();
+
+                // Delay times spread out based on room size
+                const baseDelay = (reverbSize / 10) * 0.05; // 0.005s to 0.05s
+                delay.delayTime.value = baseDelay * (i + 1) * (1 + Math.random() * 0.3);
+
+                // Exponential decay for each tap
+                const decayFactor = Math.pow(0.5, i / (numTaps - 1));
+                gain.gain.value = decayFactor * (reverbDecay / 10);
+
+                delays.push(delay);
+                gains.push(gain);
+            }
+
+            return { delays, gains, dryGain, wetGain, reverbOutput };
+        }
+
+        // Play sound directly (for cursor interaction, bypasses mute/running checks)
+        function playSoundDirect(pan, freq) {
+            const duration = 0.15;
+            const fadeTime = 0.02;
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            const panNode = audioCtx.createStereoPanner();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = freq;
+
+            panNode.pan.value = pan;
+
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + fadeTime);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+
+            oscillator.connect(gainNode);
+
+            if (reverbEnabled) {
+                // Create reverb for this sound
+                const reverb = createReverb();
+
+                // Dry path
+                reverb.dryGain.gain.value = 1 - reverbMix;
+                gainNode.connect(reverb.dryGain);
+                reverb.dryGain.connect(panNode);
+
+                // Wet path - connect to all delay taps
+                reverb.wetGain.gain.value = reverbMix;
+                gainNode.connect(reverb.wetGain);
+
+                reverb.delays.forEach((delay, i) => {
+                    reverb.wetGain.connect(delay);
+                    delay.connect(reverb.gains[i]);
+                    reverb.gains[i].connect(reverb.reverbOutput);
+                });
+
+                reverb.reverbOutput.connect(panNode);
+            } else {
+                // No reverb, direct connection
+                gainNode.connect(panNode);
+            }
+
+            panNode.connect(audioCtx.destination);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + duration);
+
+            return freq;
+        }
+
+        // Play sound with reverb (for ball interaction, checks mute/running state)
+        function playSound(pan, freq) {
+            if (isMuted || !isRunning || !audioCtx) return freq;
+
+            const duration = 0.15;
+            const fadeTime = 0.02;
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            const panNode = audioCtx.createStereoPanner();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = freq;
+
+            panNode.pan.value = pan;
+
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.15, audioCtx.currentTime + fadeTime);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+
+            oscillator.connect(gainNode);
+
+            if (reverbEnabled) {
+                // Create reverb for this sound
+                const reverb = createReverb();
+
+                // Dry path
+                reverb.dryGain.gain.value = 1 - reverbMix;
+                gainNode.connect(reverb.dryGain);
+                reverb.dryGain.connect(panNode);
+
+                // Wet path - connect to all delay taps
+                reverb.wetGain.gain.value = reverbMix;
+                gainNode.connect(reverb.wetGain);
+
+                reverb.delays.forEach((delay, i) => {
+                    reverb.wetGain.connect(delay);
+                    delay.connect(reverb.gains[i]);
+                    reverb.gains[i].connect(reverb.reverbOutput);
+                });
+
+                reverb.reverbOutput.connect(panNode);
+            } else {
+                // No reverb, direct connection
+                gainNode.connect(panNode);
+            }
+
+            panNode.connect(audioCtx.destination);
+
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + duration);
+
+            return freq;
+        }
+
+        // Track active square
+        let currentActiveIndex = -1;
+
+        // Track touch position for continuous touch activation
+        let isTouching = false;
+        let lastTouchedSquare = null;
+
+        // Event delegation for mouse events
+        const grid = document.getElementById('squares-grid');
+
+        grid.addEventListener('mouseenter', (e) => {
+            if (e.target.classList.contains('square')) {
+                const row = parseInt(e.target.dataset.row);
+                const col = parseInt(e.target.dataset.col);
+                activateSquareByElement(e.target, row, col);
+            }
+        }, true);
+
+        grid.addEventListener('mouseleave', (e) => {
+            if (e.target.classList.contains('square')) {
+                e.target.classList.remove('active');
+            }
+        }, true);
+
+        // Event delegation for touch events
+        grid.addEventListener('touchstart', (e) => {
+            if (e.target.classList.contains('square')) {
+                e.preventDefault();
+                isTouching = true;
+                lastTouchedSquare = e.target;
+                const row = parseInt(e.target.dataset.row);
+                const col = parseInt(e.target.dataset.col);
+                activateSquareByElement(e.target, row, col);
+            }
+        }, { passive: false });
+
+        // Handle touch move for dragging across squares
+        function handleTouchMove(e) {
+            if (!isTouching) return;
+
+            e.preventDefault();
+            const touch = e.touches[0];
+            const element = document.elementFromPoint(touch.clientX, touch.clientY);
+
+            if (element && element.classList.contains('square') && element !== lastTouchedSquare) {
+                // Deactivate previous square
+                if (lastTouchedSquare) {
+                    lastTouchedSquare.classList.remove('active');
+                }
+
+                // Activate new square using data attributes
+                const row = parseInt(element.dataset.row);
+                const col = parseInt(element.dataset.col);
+                activateSquareByElement(element, row, col);
+                lastTouchedSquare = element;
+            }
+        }
+
+        // Global touch event listeners for dragging
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+        document.addEventListener('touchend', () => {
+            isTouching = false;
+            if (lastTouchedSquare) {
+                lastTouchedSquare.classList.remove('active');
+                lastTouchedSquare = null;
+            }
+        });
+
+        // Control handlers
+        document.getElementById('speedSlider').addEventListener('input', (e) => {
+            ballSpeed = parseInt(e.target.value);
+            document.getElementById('speedValue').textContent = ballSpeed;
+
+            // Update ball velocity maintaining direction
+            const currentSpeed = Math.sqrt(ball.velocity.x ** 2 + ball.velocity.y ** 2);
+            if (currentSpeed > 0) {
+                const scale = ballSpeed / currentSpeed;
+                Body.setVelocity(ball, {
+                    x: ball.velocity.x * scale,
+                    y: ball.velocity.y * scale
+                });
+            }
+        });
+
+        // Reverb controls
+        document.getElementById('reverbToggleBtn').addEventListener('click', () => {
+            reverbEnabled = !reverbEnabled;
+            const btn = document.getElementById('reverbToggleBtn');
+            btn.textContent = reverbEnabled ? 'Reverb: On' : 'Reverb: Off';
+            if (reverbEnabled) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+
+        document.getElementById('reverbMix').addEventListener('input', (e) => {
+            reverbMix = parseInt(e.target.value) / 100;
+            document.getElementById('reverbMixValue').textContent = e.target.value + '%';
+        });
+
+        document.getElementById('reverbDecay').addEventListener('input', (e) => {
+            reverbDecay = parseFloat(e.target.value);
+            document.getElementById('reverbDecayValue').textContent = reverbDecay.toFixed(1) + 's';
+        });
+
+        document.getElementById('reverbSize').addEventListener('input', (e) => {
+            reverbSize = parseInt(e.target.value);
+            document.getElementById('reverbSizeValue').textContent = reverbSize;
+        });
+
+        // Start engine (but paused initially)
+        const runner = Runner.create({
+            delta: 1000 / 60,
+            isFixed: true
+        });
+        runner.enabled = false; // Start paused
+
+        // Animation loop references
+        let ballAnimationId = null;
+        let speedAnimationId = null;
+
+        // Modified update functions to check running state
+        function updateBallPosition() {
+            if (!isRunning || !isBallActive) {
+                ballAnimationId = requestAnimationFrame(updateBallPosition);
+                return;
+            }
+
+            const ballX = ball.position.x;
+            const ballY = ball.position.y;
+
+            const col = Math.floor(ballX / squareSize);
+            const row = Math.floor(ballY / squareSize);
+
+            if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                const index = row * cols + col;
+
+                if (index !== currentActiveIndex) {
+                    if (currentActiveIndex >= 0 && squares[currentActiveIndex]) {
+                        squares[currentActiveIndex].element.classList.remove('active');
+                    }
+
+                    const squareData = squares[index];
+                    squareData.element.classList.add('active');
+                    currentActiveIndex = index;
+
+                    const pan = (col / cols) * 2 - 1;
+                    const rowRatio = 1 - (row / rows);
+                    const rowMaxFreq = minFreq + (rowRatio * (maxFreq - minFreq));
+                    const absoluteMin = 50;
+                    const randomFreq = absoluteMin + Math.random() * (rowMaxFreq - absoluteMin);
+
+                    playSound(pan, randomFreq);
+                }
+            }
+
+            ballAnimationId = requestAnimationFrame(updateBallPosition);
+        }
+
+        function maintainSpeed() {
+            if (isRunning && isBallActive) {
+                const speed = Math.sqrt(ball.velocity.x ** 2 + ball.velocity.y ** 2);
+
+                if (speed > 0 && Math.abs(speed - ballSpeed) > 0.1) {
+                    const scale = ballSpeed / speed;
+                    Body.setVelocity(ball, {
+                        x: ball.velocity.x * scale,
+                        y: ball.velocity.y * scale
+                    });
+                }
+            }
+
+            speedAnimationId = requestAnimationFrame(maintainSpeed);
+        }
+
+        // Start/Stop everything
+        function toggleStartStop() {
+            isRunning = !isRunning;
+            const btn = document.getElementById('startStopBtn');
+
+            if (isRunning) {
+                ensureAudio();
+                isMuted = false;
+                isBallActive = true;
+                runner.enabled = true;
+                btn.textContent = 'Stop';
+                btn.classList.add('active');
+            } else {
+                runner.enabled = false;
+                isBallActive = false;
+                if (currentActiveIndex >= 0 && squares[currentActiveIndex]) {
+                    squares[currentActiveIndex].element.classList.remove('active');
+                    currentActiveIndex = -1;
+                }
+                btn.textContent = 'Start';
+                btn.classList.remove('active');
+            }
+        }
+
+        // Button event listeners
+        document.getElementById('startStopBtn').addEventListener('click', toggleStartStop);
+
+        // Spacebar control, once per press
+        document.addEventListener('keydown', (e) => {
+            if (e.code !== 'Space') return;
+            e.preventDefault();
+            if (e.repeat) return;
+            toggleStartStop();
+        });
+
+        // Stop a focused button from also firing its own click on key release
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') e.preventDefault();
+        });
+
+        // Start Matter.js runner once (it will be enabled/disabled via runner.enabled)
+        Runner.run(runner, engine);
+
+        // Start animation loops (they check running state internally)
+        updateBallPosition();
+        maintainSpeed();
+
+        // Initialize
+        createSquaresGrid();
+
+        // Initialize slider display values
+        document.getElementById('speedValue').textContent = ballSpeed;
+        document.getElementById('reverbMixValue').textContent = Math.round(reverbMix * 100) + '%';
+        document.getElementById('reverbDecayValue').textContent = reverbDecay.toFixed(1) + 's';
+        document.getElementById('reverbSizeValue').textContent = reverbSize;
+
+        // Menu panel: icon toggles, click outside or Escape closes
+        const menuBtn = document.getElementById('menuBtn');
+        const panel = document.getElementById('panel');
+
+        function setPanel(open) {
+            panel.hidden = !open;
+            menuBtn.setAttribute('aria-expanded', String(open));
+        }
+
+        menuBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            setPanel(panel.hidden);
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!panel.hidden && !panel.contains(e.target)) setPanel(false);
+        });
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && !panel.hidden) setPanel(false);
+        });
+
+        // Reset: every slider back to its starting value, reverb off
+        const initialSliders = Array.from(panel.querySelectorAll('input[type="range"]')).map(function(input) {
+            return [input, input.value];
+        });
+
+        document.getElementById('resetBtn').addEventListener('click', function() {
+            initialSliders.forEach(function([input, value]) {
+                input.value = value;
+                input.dispatchEvent(new Event('input'));
+            });
+            if (reverbEnabled) {
+                document.getElementById('reverbToggleBtn').click();
+            }
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            ({ width: canvasWidth, height: canvasHeight } = updateCanvasSize());
+            createSquaresGrid();
+            currentActiveIndex = -1;
+
+            // Walls at the new size, ball back to the centre if it is now outside
+            World.remove(world, walls);
+            walls = createWalls(canvasWidth, canvasHeight);
+            World.add(world, walls);
+            const { x, y } = ball.position;
+            if (x < radius || x > canvasWidth - radius || y < radius || y > canvasHeight - radius) {
+                Body.setPosition(ball, { x: canvasWidth / 2, y: canvasHeight / 2 });
+            }
+        });
+    </script>
+</body>
+</html>
